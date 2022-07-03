@@ -1,0 +1,110 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+name: "Build & Release"
+jobs:
+  upload-release:
+    runs-on: ubuntu-latest
+    needs: [build-macos,build-windows]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: create release
+      id: create_release
+      uses: actions/create-release@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false   
+    - name: download artifacts
+      uses: actions/download-artifact@v1
+      with:
+       name: uploads
+    - name: upload macos
+      id: upload-macos 
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./uploads/macos.tar.gz
+        asset_name: macos.tar.gz
+        asset_content_type: application/zip
+    - name: upload windows
+      id: upload-windows 
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./uploads/windows.zip
+        asset_name: windows.zip
+        asset_content_type: application/zip
+
+  build-macos:
+
+    runs-on: macos-latest
+
+    defaults:
+      run:
+        working-directory: ../online-json-translator/
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        repository: mayurpitroda96/online-json-translator
+        ref: 'master'
+        token: ${{ secrets.GH_TOKEN }} # `GH_PAT` is a secret that contains your PAT
+        path: online-json-translator
+    - uses: subosito/flutter-action@v1
+      with:
+        flutter-version: '3.0.3'
+        channel: 'stable'
+    - uses: actions/setup-java@v1
+      with:
+        java-version: '12.x'
+    - run: flutter  config --enable-macos-desktop
+    - run: flutter pub get
+    # build macOS desktop version
+    - run: flutter build macos --release
+    - run: cd build/macos/Build/Products/Release/ && tar -cvf macos.tar.gz *.app
+    - name: upload macos artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: uploads
+        path: ../online-json-translator/build/macos/Build/Products/Release/macos.tar.gz
+  
+  build-windows:
+
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ../online-json-translator/
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        repository: mayurpitroda96/online-json-translator
+        ref: 'master'
+        token: ${{ secrets.GH_TOKEN }} # `GH_PAT` is a secret that contains your PAT
+        path: online-json-translator
+    - uses: subosito/flutter-action@v1
+      with:
+        flutter-version: '3.0.3'
+        channel: 'stable'
+    - uses: actions/setup-java@v1
+      with:
+        java-version: '12.x'
+    - run: flutter config --enable-windows-desktop
+    - run: flutter pub get
+    # build macOS desktop version
+    - run: flutter build windows --release
+    - run: powershell Compress-Archive build/windows/runner/Release/ build/windows/runner/Release/windows.zip 
+    - name: upload windows artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: uploads
+        path: ../online-json-translator/build/windows/runner/Release/windows.zip
